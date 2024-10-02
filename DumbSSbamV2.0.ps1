@@ -69,35 +69,16 @@ function Check-FileDeletionStatus {
     return "File Exists"
 }
 
-# Funzione per determinare se un file è sospetto in base a specifiche condizioni
+# Funzione per determinare se un file è sospetto
 function Is-Suspect {
     param (
         [string]$FilePath
     )
 
-    # Verifica se il file esiste
     $fileExists = Test-Path -Path $FilePath
-    if (!$fileExists) {
-        return "Suspect (File Missing)"
-    }
-
-    # Verifica se il file richiede privilegi amministrativi (come prima)
     $requiresAdmin = (Get-Acl $FilePath -ErrorAction SilentlyContinue).AreAccessRulesProtected
 
-    # Verifica se il file viene eseguito tramite cmd.exe
-    $parentProcess = Get-Process | Where-Object { $_.Path -eq $FilePath } | Select-Object -ExpandProperty Parent
-    $isRunByCmd = ($parentProcess -match "cmd.exe")
-
-    # Controllo per autoclicker o programmi con cheat
-    $fileName = [System.IO.Path]::GetFileNameWithoutExtension($FilePath)
-    $knownAutoClickers = @("autoclicker", "clicker", "macro")
-    $knownCheats = @("cheat", "trainer", "hack")
-
-    $isAutoClicker = $knownAutoClickers | ForEach-Object { $fileName -match $_ }
-    $isCheat = $knownCheats | ForEach-Object { $fileName -match $_ }
-
-    # Logica per determinare se è sospetto
-    if ($requiresAdmin -or $isRunByCmd -or $isAutoClicker -or $isCheat) {
+    if (!$fileExists -or $requiresAdmin) {
         return "Suspect"
     } else {
         return "Not Suspect"
@@ -112,7 +93,7 @@ Write-Host -ForegroundColor Red "   ██████╗░██╗░░░�
 Write-Host -ForegroundColor Red "   ██╔══██╗██║░░░██║████╗░████║██╔══██╗"
 Write-Host -ForegroundColor Red "   ██║░░██║██║░░░██║██╔████╔██║██████╦╝"
 Write-Host -ForegroundColor Red "   ██║░░██║██║░░░██║██║╚██╔╝██║██╔══██╗"
-Write-Host -ForegroundColor Red "   ██████╔╝╚██████╔╝██║╚═╝░██║██████╦╝"
+Write-Host -ForegroundColor Red "   ██████╔╝╚██████╔╝██║░╚═╝░██║██████╦╝"
 Write-Host -ForegroundColor Red "   ╚═════╝░░╚═════╝░╚═╝░░░░░╚═╝╚═════╝░"
 
 Write-Host ""
@@ -188,30 +169,27 @@ $Bam = Foreach ($Sid in $Users) {
         }
         
         ForEach ($Item in $BamItems) {
-            $KeyItem = Get-ItemProperty -Path "$($rp)UserSettings\$SID" -Name $Item | Select-Object -ExpandProperty $Item
-            $ts = $KeyItem.TimeStamp
-            $filerun = $KeyItem.FullPath
-            
-            $CheckSignature = Get-Signature $filerun
-            $CheckIfSuspect = Is-Suspect $filerun
-            $DriveInfo = Get-DiskInfo $filerun
-            $DeletionStatus = Check-FileDeletionStatus $filerun
-            
-            New-Object PSObject -Property @{
-                User = $User
-                SID = $SID
-                FileName = $filerun
-                DateRan = (Get-Date 1/1/1601).AddSeconds($ts)
-                Signature = $CheckSignature
-                Suspect = $CheckIfSuspect
-                DiskType = $DriveInfo
-                DeletionStatus = $DeletionStatus
+            $Key = Get-ItemProperty -Path "$($rp)UserSettings\$Sid" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $Item
+
+            if ($key.length -eq 24) {
+                $Hex = [System.BitConverter]::ToString($key[7..0]) -replace "-",""
+                $TimeLocal = Get-Date ([DateTime]::FromFileTime([Convert]::ToInt64($Hex, 16))) -Format "yyyy-MM-dd HH:mm:ss"
+                $TimeUTC = Get-Date ([DateTime]::FromFileTimeUtc([Convert]::ToInt64($Hex, 16))) -Format "yyyy-MM-dd HH:mm:ss"
+                $Bias = -([convert]::ToInt32([Convert]::ToString($UserBias,2),2))
+                $Day = -([convert]::ToInt32([Convert]::ToString($UserDay,2),2)) 
+                $Biasd = $Bias / 60
+                $Dayd = $Day / 60
+                $TimeUser = (Get-Date ([DateTime]::FromFileTimeUtc([Convert]::ToInt64($Hex, 16))) -Format "yyyy-MM-dd HH:mm:ss").AddHours($Biasd)
             }
+
+            Write-Host "User: $User  Path: $Item"
         }
     }
 }
 
-$Bam | Out-GridView
 $sw.Stop()
-Write-Host "Total Execution Time: $($sw.Elapsed.TotalMinutes) Minutes"
+$t = $sw.Elapsed.TotalMinutes
+Write-Host "Total Execution Time: $t Minutes" -ForegroundColor Yellow
 
+# Pausa per prevenire la chiusura immediata
+Read-Host "Premi Invio per chiudere la finestra..."
