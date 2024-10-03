@@ -1,0 +1,66 @@
+# Imposta l'azione per ignorare eventuali errori
+$ErrorActionPreference = "SilentlyContinue"
+
+# Logo
+Clear-Host
+Write-Host "";
+Write-Host "";
+Write-Host -ForegroundColor Cyan "██████╗  █████╗ ███╗   ███╗     ██████╗██████╗ ███████╗ █████╗ ████████╗ ██████╗ ██████╗";
+Write-Host -ForegroundColor Cyan "██╔══██╗██╔══██╗████╗ ████║    ██╔════╝██╔══██╗██╔════╝██╔══██╗╚══██╔══╝██╔═══██╗██╔══██╗";
+Write-Host -ForegroundColor Cyan "██████╔╝███████║██╔████╔██║    ██║     ██████╔╝█████╗  ███████║   ██║   ██║   ██║██████╔╝";
+Write-Host -ForegroundColor Cyan "██╔══██╗██╔══██║██║╚██╔╝██║    ██║     ██╔══██╗██╔══╝  ██╔══██║   ██║   ██║   ██║██╔══██╗";
+Write-Host -ForegroundColor Cyan "██████╔╝██║  ██║██║ ╚═╝ ██║    ╚██████╗██║  ██║███████╗██║  ██║   ██║   ╚██████╔╝██║  ██║";
+Write-Host -ForegroundColor Cyan "╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝     ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝   ╚═╝    ╚═════╝ ╚═╝  ╚═╝";
+Write-Host "";
+
+# Funzione per creare le chiavi del registro per il BAM
+function Create-BAMKeys {
+    $bamKeyPath = "HKLM:\SYSTEM\CurrentControlSet\Services\bam"
+    $bamStateKeyPath = "$bamKeyPath\State"
+    $bamUserSettingsKeyPath = "$bamKeyPath\UserSettings"
+
+    # Controlla se la chiave BAM esiste
+    if (Test-Path -Path $bamKeyPath) {
+        Write-Host -ForegroundColor Yellow "Le chiavi BAM esistono già nel registro."
+    } else {
+        # Creazione delle chiavi BAM
+        New-Item -Path "HKLM:\SYSTEM\CurrentControlSet\Services" -Name "bam" -Force | Out-Null
+        New-Item -Path $bamKeyPath -Name "State" -Force | Out-Null
+        New-Item -Path $bamKeyPath -Name "UserSettings" -Force | Out-Null
+        
+        Write-Host -ForegroundColor Green "Chiavi BAM create con successo!"
+    }
+
+    # Controlla se le sottosezioni esistono
+    if (Test-Path -Path $bamStateKeyPath) {
+        Write-Host -ForegroundColor Yellow "La chiave BAM\\State esiste già."
+    } else {
+        New-Item -Path $bamKeyPath -Name "State" -Force | Out-Null
+        Write-Host -ForegroundColor Green "Chiave BAM\\State creata con successo!"
+    }
+
+    if (Test-Path -Path $bamUserSettingsKeyPath) {
+        Write-Host -ForegroundColor Yellow "La chiave BAM\\UserSettings esiste già."
+    } else {
+        New-Item -Path $bamKeyPath -Name "UserSettings" -Force | Out-Null
+        Write-Host -ForegroundColor Green "Chiave BAM\\UserSettings creata con successo!"
+    }
+}
+
+# Verifica se l'utente ha privilegi di amministratore
+function Test-Admin {
+    $currentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $currentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+}
+
+# Esegui il controllo dei privilegi
+if (!(Test-Admin)) {
+    Write-Warning "Si prega di eseguire questo script come amministratore."
+    Exit
+}
+
+# Creazione delle chiavi BAM
+Create-BAMKeys
+
+# Avviso completamento
+Write-Host -ForegroundColor Green "Operazione completata!"
