@@ -1,0 +1,189 @@
+$ErrorActionPreference = "SilentlyContinue"
+
+function Get-Signature {
+    [CmdletBinding()]
+    param (
+        [string[]]$FilePath
+    )
+
+    $Existence = Test-Path -PathType "Leaf" -Path $FilePath
+    $Authenticode = (Get-AuthenticodeSignature -FilePath $FilePath -ErrorAction SilentlyContinue).Status
+    $Signature = "Invalid Signature (UnknownError)"
+
+    if ($Existence) {
+        if ($Authenticode -eq "Valid") {
+            $Signature = "Valid Signature"
+        } elseif ($Authenticode -eq "NotSigned") {
+            $Signature = "Invalid Signature (NotSigned)"
+        } elseif ($Authenticode -eq "HashMismatch") {
+            $Signature = "Invalid Signature (HashMismatch)"
+        } elseif ($Authenticode -eq "NotTrusted") {
+            $Signature = "Invalid Signature (NotTrusted)"
+        } elseif ($Authenticode -eq "UnknownError") {
+            $Signature = "Invalid Signature (UnknownError)"
+        }
+        return $Signature
+    } else {
+        $Signature = "File Was Not Found"
+        return $Signature
+    }
+}
+
+Clear-Host
+
+Write-Host ""
+Write-Host ""
+Write-Host -ForegroundColor Red "   ██████╗ ███████╗██████╗     ██╗      ██████╗ ████████╗██╗   ██╗███████╗    ██████╗  █████╗ ███╗   ███╗"
+Write-Host -ForegroundColor Red "   ██╔══██╗██╔════╝██╔══██╗    ██║     ██╔═══██╗╚══██╔══╝██║   ██║██╔════╝    ██╔══██╗██╔══██╗████╗ ████║"
+Write-Host -ForegroundColor Red "   ██████╔╝█████╗  ██║  ██║    ██║     ██║   ██║   ██║   ██║   ██║███████╗    ██████╔╝███████║██╔████╔██║"
+Write-Host -ForegroundColor Red "   ██╔══██╗██╔══╝  ██║  ██║    ██║     ██║   ██║   ██║   ██║   ██║╚════██║    ██╔══██╗██╔══██║██║╚██╔╝██║"
+Write-Host -ForegroundColor Red "   ██║  ██║███████╗██████╔╝    ███████╗╚██████╔╝   ██║   ╚██████╔╝███████║    ██████╔╝██║  ██║██║ ╚═╝ ██║"
+Write-Host -ForegroundColor Red "   ╚═╝  ╚═╝╚══════╝╚═════╝     ╚══════╝ ╚═════╝    ╚═╝    ╚═════╝ ╚══════╝    ╚═════╝ ╚═╝  ╚═╝╚═╝     ╚═╝"
+Write-Host ""
+Write-Host -ForegroundColor Blue "   Made By PureIntent (Shitty ScreenSharer) For Red Lotus ScreenSharing and DFIR - " -NoNewLine
+Write-Host -ForegroundColor Red "discord.gg/redlotus"
+Write-Host ""
+
+function Test-Admin {
+    $currentUser = New-Object Security.Principal.WindowsPrincipal $([Security.Principal.WindowsIdentity]::GetCurrent())
+    return $currentUser.IsInRole([Security.Principal.WindowsBuiltinRole]::Administrator)
+}
+
+if (!(Test-Admin)) {
+    Write-Warning "Please Run This Script as Admin."
+    Start-Sleep 10
+    Exit
+}
+
+$sw = [Diagnostics.Stopwatch]::StartNew()
+
+if (!(Get-PSDrive -Name HKLM -PSProvider Registry)){
+    Try { 
+        New-PSDrive -Name HKLM -PSProvider Registry -Root HKEY_LOCAL_MACHINE 
+    } Catch { 
+        Write-Warning "Error Mounting HKEY_Local_Machine"
+    }
+}
+
+# Verifica se le chiavi BAM esistono
+function Check-BAMKeysExist {
+    $bamKey = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\"
+    $bamStateKey = "HKLM:\SYSTEM\CurrentControlSet\Services\bam\State\"
+
+    if (!(Test-Path $bamKey)) {
+        Write-Warning "La chiave BAM non esiste: $bamKey"
+        return $false
+    }
+
+    if (!(Test-Path $bamStateKey)) {
+        Write-Warning "La chiave BAM\State non esiste: $bamStateKey"
+        return $false
+    }
+
+    return $true
+}
+
+# Verifica la presenza delle chiavi BAM prima di procedere
+if (!(Check-BAMKeysExist)) {
+    Write-Host "Le chiavi BAM non sono presenti su questo sistema. Uscita."
+    Exit
+}
+
+$bv = ("bam", "bam\State")
+Try {
+    $Users = foreach($ii in $bv) {
+        Get-ChildItem -Path "HKLM:\SYSTEM\CurrentControlSet\Services\$($ii)\UserSettings\" | Select-Object -ExpandProperty PSChildName
+    }
+} Catch {
+    Write-Warning "Errore durante la lettura delle chiavi BAM. Forse non sono supportate su questa versione di Windows."
+    Exit
+}
+
+$rpath = @("HKLM:\SYSTEM\CurrentControlSet\Services\bam\","HKLM:\SYSTEM\CurrentControlSet\Services\bam\state\")
+
+$UserTime = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation").TimeZoneKeyName
+$UserBias = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation").ActiveTimeBias
+$UserDay = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\TimeZoneInformation").DaylightBias
+
+$Bam = Foreach ($Sid in $Users) {
+    foreach($rp in $rpath) {
+        $BamItems = Get-Item -Path "$($rp)UserSettings\$Sid" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Property
+        Write-Host -ForegroundColor Red "Extracting " -NoNewLine
+        Write-Host -ForegroundColor Blue "$($rp)UserSettings\$SID"
+        
+        Try {
+            $objSID = New-Object System.Security.Principal.SecurityIdentifier($Sid)
+            $User = $objSID.Translate([System.Security.Principal.NTAccount]).Value
+        } Catch {
+            $User = ""
+        }
+
+        ForEach ($Item in $BamItems) {
+            $Key = Get-ItemProperty -Path "$($rp)UserSettings\$Sid" -ErrorAction SilentlyContinue | Select-Object -ExpandProperty $Item
+
+            If ($Key.length -eq 24) {
+                $Hex = [System.BitConverter]::ToString($Key[7..0]) -replace "-",""
+                $TimeLocal = Get-Date ([DateTime]::FromFileTime([Convert]::ToInt64($Hex, 16))) -Format "yyyy-MM-dd HH:mm:ss"
+                $TimeUTC = Get-Date ([DateTime]::FromFileTimeUtc([Convert]::ToInt64($Hex, 16))) -Format "yyyy-MM-dd HH:mm:ss"
+                $Bias = -([convert]::ToInt32([Convert]::ToString($UserBias,2),2))
+                $Day = -([convert]::ToInt32([Convert]::ToString($UserDay,2),2)) 
+                $Biasd = $Bias / 60
+                $Dayd = $Day / 60
+                $TimeUser = (Get-Date ([DateTime]::FromFileTimeUtc([Convert]::ToInt64($Hex, 16))).addminutes($Bias) -Format "yyyy-MM-dd HH:mm:ss")
+
+                $d = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    ((split-path -path $Item).Remove(23)).trimstart("\Device\HarddiskVolume")
+                } else {
+                    $d = ""
+                }
+
+                $f = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    Split-path -leaf ($Item).TrimStart()
+                } else {
+                    $Item
+                }
+
+                $cp = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    ($Item).Remove(1,23)
+                } else {
+                    $cp = ""
+                }
+
+                $path = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    Join-Path -Path "C:" -ChildPath $cp
+                } else {
+                    $path = ""
+                }
+
+                $sig = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    Get-Signature $path
+                } else {
+                    $sig = ""
+                }
+
+                $timez = if ((((split-path -path $Item) | ConvertFrom-String -Delimiter "\").P3) -match '\d{1}') {
+                    $TimeUser
+                } else {
+                    $timez = ""
+                }
+
+                $Time = New-Object PSObject -Property @{
+                    "User"         = $User
+                    "BAMPath"      = $path
+                    "Signature"    = $sig
+                    "TimeZone"     = $UserTime
+                    "FileName"     = $f
+                    "BAMTime"      = $timez
+                    "BAMKey"       = $Item
+                    "Volume"       = $d
+                    "BAMTime (UTC)"= $TimeUTC
+                }
+                $Time | Select-Object User, Volume, BAMPath, FileName, BAMKey, Signature, TimeZone, BAMTime, "BAMTime (UTC)"
+            }
+        }
+    }
+}
+
+$sw.Stop()
+Write-Host ""
+Write-Host -ForegroundColor Green "Total Time Taken: $($sw.Elapsed.TotalSeconds) Seconds"
